@@ -1,0 +1,155 @@
+{
+  "name": "commit-message-ai",
+  "displayName": "Commit Message AI",
+  "description": "Generate Karma-style commit messages automatically using OpenAI",
+  "version": "1.0.0",
+  "publisher": "cueva-tech",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "ai",
+    "openai",
+    "karma",
+    "conventional commits",
+    "automation"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "commitAI.generateMessage",
+        "title": "Generate Commit Message with AI",
+        "shortTitle": "Generate",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "commitAI.setApiKey",
+        "title": "Commit AI: Set OpenAI API Key",
+        "icon": "$(key)"
+      },
+      {
+        "command": "commitAI.clearHistory",
+        "title": "Commit AI: Clear History",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "commitAI.copyHistoryItem",
+        "title": "Copy Message",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "commitAI.applyHistoryItem",
+        "title": "Apply to Commit",
+        "icon": "$(check)"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "commitAI.generateMessage",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "commitAI.clearHistory",
+          "when": "view == commitAI.history",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "commitAI.copyHistoryItem",
+          "when": "view == commitAI.history && viewItem == historyItem",
+          "group": "inline@1"
+        },
+        {
+          "command": "commitAI.applyHistoryItem",
+          "when": "view == commitAI.history && viewItem == historyItem",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "commitAI",
+          "title": "Commit AI",
+          "icon": "$(git-commit)"
+        }
+      ]
+    },
+    "views": {
+      "commitAI": [
+        {
+          "id": "commitAI.history",
+          "name": "Generated Messages History",
+          "icon": "$(history)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Commit Message AI",
+      "properties": {
+        "commitAI.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "enum": [
+            "gpt-4o-mini",
+            "gpt-4o",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo"
+          ],
+          "enumDescriptions": [
+            "Fast and cost-effective (recommended)",
+            "Most capable GPT-4 model",
+            "GPT-4 Turbo with 128k context",
+            "Legacy fast model"
+          ],
+          "description": "OpenAI model to use for generating commit messages"
+        },
+        "commitAI.maxDiffLength": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 500,
+          "maximum": 16000,
+          "description": "Maximum characters of git diff to send to OpenAI (larger = more context, higher cost)"
+        },
+        "commitAI.includeBody": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include a detailed body in the commit message when changes are complex"
+        },
+        "commitAI.temperature": {
+          "type": "number",
+          "default": 0.3,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "AI creativity level (0 = deterministic, 1 = creative). Lower values are more consistent."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run compile -- --production && vsce package",
+    "vscode:prepublish": "node esbuild.js --production"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "esbuild": "^0.20.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}
