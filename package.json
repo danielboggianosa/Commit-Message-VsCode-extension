@@ -2,7 +2,7 @@
   "name": "commit-message-ai",
   "displayName": "Commit Message AI",
   "description": "Generate Karma-style commit messages automatically using OpenAI",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "cueva-tech",
   "engines": {
     "vscode": "^1.85.0"
