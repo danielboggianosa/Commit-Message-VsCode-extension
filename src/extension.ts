@@ -27,14 +27,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ── Helper: ensure API key is set ────────────────────────────────────────
 
   async function ensureApiKey(): Promise<boolean> {
+    if (vscode.workspace.getConfiguration('commitAI').get<string>('provider', 'openai') === 'ollama') return true;
     const key = await openaiService.getApiKey();
     if (key) return true;
 
     const action = await vscode.window.showWarningMessage(
       'Commit AI: OpenAI API Key is not configured.',
       { modal: false },
-      'Set API Key'
+      'Set API Key',
+      'Use Ollama (no API key)'
     );
+
+    if (action === 'Use Ollama (no API key)') {
+      await vscode.workspace.getConfiguration('commitAI').update('provider', 'ollama', vscode.ConfigurationTarget.Global);
+      vscode.window.showInformationMessage('Ollama selected. Start Ollama and download the model with: ollama pull qwen2.5-coder:3b');
+      return true;
+    }
 
     if (action === 'Set API Key') {
       await vscode.commands.executeCommand('commitAI.setApiKey');
@@ -81,7 +89,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               return;
             }
 
-            progress.report({ increment: 30, message: 'Asking OpenAI…' });
+            const provider = vscode.workspace.getConfiguration('commitAI').get<string>('provider', 'openai');
+            progress.report({ increment: 30, message: provider === 'ollama' ? 'Asking Ollama…' : 'Asking OpenAI…' });
             const generatedMessage = await openaiService.generateCommitMessage(result.diff);
 
             progress.report({ increment: 60, message: 'Done!' });

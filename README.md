@@ -1,6 +1,6 @@
 # KarmaMessageAI
 
-Generate perfect Git commit messages automatically using OpenAI, following the **Karma / Conventional Commits** specification.
+Generate perfect Git commit messages using OpenAI or local models through Ollama, following the **Karma / Conventional Commits** specification.
 
 \![Version](https://img.shields.io/badge/version-1.0.3-blue)
 \![VSCode](https://img.shields.io/badge/VSCode-^1.85.0-007ACC)
@@ -66,7 +66,7 @@ chore(deps): update dependencies to latest versions
 
 - **VS Code** `^1.85.0`
 - **Git** installed and available in your PATH
-- An **OpenAI API Key** — get one at [platform.openai.com](https://platform.openai.com/api-keys)
+- Either an **OpenAI API Key** or **Ollama** with a downloaded local model.
 
 ---
 
@@ -95,7 +95,36 @@ chore(deps): update dependencies to latest versions
 
 ## Setup
 
-### 1. Set your OpenAI API Key
+### 1. Choose a provider
+
+OpenAI remains the default. For a local option without an API key or per-request API fees:
+
+1. Install and start [Ollama](https://ollama.com/download).
+2. Download the default model: `ollama pull qwen2.5-coder:3b` (about 1.9 GB).
+3. Add to VS Code settings:
+
+   ```json
+   "commitAI.provider": "ollama",
+   "commitAI.ollama.model": "qwen2.5-coder:3b"
+   ```
+
+Keep Ollama running; use `ollama serve` if the service is not already active.
+After downloading the model, local generation works offline. Speed and quality depend
+on your hardware and selected model. Change `commitAI.ollama.model` to another model
+you have downloaded. Local models use your computer's RAM and processing resources.
+
+The default server is `http://localhost:11434`. Configure `commitAI.ollama.baseUrl`
+if needed and `commitAI.ollama.timeout` (default 120 seconds) for slow model loading.
+With Remote SSH, WSL or containers, localhost refers to the machine running the
+extension host. The server must be reachable from there.
+
+See [Ollama authentication](https://docs.ollama.com/api/authentication): local API
+requests need no key; cloud models are a separate service and may require sign-in.
+
+#### OpenAI setup
+
+Set `commitAI.provider` to `openai` and configure your API key:
+
 
 Open the Command Palette (`Ctrl+Shift+P`) and run:
 
@@ -142,6 +171,10 @@ Configure via `File → Preferences → Settings` and search for **Commit AI**:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `commitAI.provider` | `openai` | `openai` or `ollama` |
+| `commitAI.ollama.model` | `qwen2.5-coder:3b` | Downloaded local model |
+| `commitAI.ollama.baseUrl` | `http://localhost:11434` | Ollama server URL |
+| `commitAI.ollama.timeout` | `120` | Timeout in seconds |
 | `commitAI.model` | `gpt-4o-mini` | OpenAI model to use |
 | `commitAI.maxDiffLength` | `4000` | Max characters of diff sent to OpenAI |
 | `commitAI.includeBody` | `true` | Include body for complex changes |
@@ -188,7 +221,8 @@ npx vsce package --no-dependencies
 
 ## Privacy
 
-- Your git diff is sent to OpenAI's API for processing.
+- With OpenAI selected, your git diff is sent to OpenAI's API.
+- With Ollama selected, your diff is sent only to the configured Ollama server. A local server with a local model keeps generation on that machine; remote servers or cloud models have different privacy implications.
 - The API key is stored locally in VS Code's `SecretStorage` (OS Keychain).
 - No data is stored or sent anywhere else.
 - Review [OpenAI's privacy policy](https://openai.com/policies/privacy-policy) for details on how your data is handled.

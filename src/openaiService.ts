@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
+import * as http from 'http';
 
 // ─── Karma/Conventional Commits specification ────────────────────────────────
 const KARMA_TYPES = [
@@ -95,11 +96,6 @@ export class OpenAIService {
   // ── Message generation ────────────────────────────────────────────────────
 
   async generateCommitMessage(diff: string): Promise<string> {
-    const apiKey = await this.getApiKey();
-    if (!apiKey) {
-      throw new Error('OpenAI API Key is not configured.');
-    }
-
     const config = vscode.workspace.getConfiguration('commitAI');
     const model = config.get<string>('model', 'gpt-4o-mini');
     const temperature = config.get<number>('temperature', 0.3);
@@ -108,6 +104,13 @@ export class OpenAIService {
     const userPrompt = includeBody
       ? `Generate a Karma-style commit message (with body if the changes are complex) for the following git diff:\n\n${diff}`
       : `Generate a single-line Karma-style commit message (no body) for the following git diff:\n\n${diff}`;
+
+    if (config.get<string>('provider', 'openai') === 'ollama') {
+      return this.callOllama(config, userPrompt, temperature);
+    }
+
+    const apiKey = await this.getApiKey();
+    if (!apiKey) throw new Error('OpenAI API Key is not configured.');
 
     const requestBody = JSON.stringify({
       model,
@@ -120,6 +123,65 @@ export class OpenAIService {
     });
 
     return this.callOpenAI(apiKey, requestBody);
+  }
+
+  private callOllama(config: vscode.WorkspaceConfiguration, userPrompt: string, temperature: number): Promise<string> {
+    const model = config.get<string>('ollama.model', 'qwen2.5-coder:3b').trim();
+    if (!model) throw new Error('Set commitAI.ollama.model to a downloaded Ollama model.');
+    let url: URL;
+    try {
+      url = new URL(config.get<string>('ollama.baseUrl', 'http://localhost:11434'));
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error();
+      url.pathname = url.pathname.replace(/\/$/, '') + '/api/chat';
+    } catch {
+      throw new Error('commitAI.ollama.baseUrl must be an HTTP(S) server URL without credentials, query or fragment.');
+    }
+    const body = JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
+      stream: false,
+      options: { temperature, num_predict: 500 },
+    });
+    const timeout = config.get<number>('ollama.timeout', 120) * 1000;
+    return new Promise((resolve, reject) => {
+      const transport = url.protocol === 'https:' ? https : http;
+      const req = transport.request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      }, res => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => { data += chunk; });
+        res.on('error', reject);
+        res.on('aborted', () => reject(new Error('Ollama response was interrupted.')));
+        res.on('end', () => {
+          try {
+            if (res.statusCode === 404) {
+              reject(new Error(`Ollama model or endpoint not found. Download the model with: ollama pull ${model}. Check commitAI.ollama.baseUrl.`));
+              return;
+            }
+            if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+              reject(new Error(`Ollama request failed (HTTP ${res.statusCode}). Check the Ollama server and selected model.`));
+              return;
+            }
+            const parsed = JSON.parse(data);
+            if (parsed.error) { reject(new Error(`Ollama: ${parsed.error}`)); return; }
+            const message = parsed.message?.content;
+            if (typeof message !== 'string' || !message.trim()) {
+              reject(new Error('Ollama returned an empty response. Try another model.'));
+              return;
+            }
+            resolve(message.trim());
+          } catch { reject(new Error('Failed to parse Ollama response. Check commitAI.ollama.baseUrl.')); }
+        });
+      });
+      const timer = setTimeout(() => {
+        req.destroy(new Error('Ollama request timed out. Increase commitAI.ollama.timeout or use a smaller model.'));
+      }, timeout);
+      req.on('close', () => clearTimeout(timer));
+      req.on('error', (err: Error) => reject(new Error(`Ollama: ${err.message}. Ensure Ollama is running (ollama serve).`)));
+      req.end(body);
+    });
   }
 
   // ── Internal HTTP request ─────────────────────────────────────────────────

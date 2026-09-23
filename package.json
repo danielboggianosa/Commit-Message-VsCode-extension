@@ -1,8 +1,8 @@
 {
   "name": "karma-message-ai",
   "displayName": "KarmaMessageAI",
-  "description": "Generate Karma-style commit messages automatically using OpenAI",
-  "version": "1.0.3",
+  "description": "Generate Karma-style commit messages using OpenAI or local Ollama models, without an API key",
+  "version": "1.0.4",
   "publisher": "DanielBoggiano",
   "icon": "images/icon.png",
   "engines": {
@@ -123,7 +123,7 @@
           "default": 4000,
           "minimum": 500,
           "maximum": 16000,
-          "description": "Maximum characters of git diff to send to OpenAI (larger = more context, higher cost)"
+          "description": "Maximum characters of git diff to send to the selected provider"
         },
         "commitAI.includeBody": {
           "type": "boolean",
@@ -136,6 +136,34 @@
           "minimum": 0,
           "maximum": 1,
           "description": "AI creativity level (0 = deterministic, 1 = creative). Lower values are more consistent."
+        },
+        "commitAI.provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "ollama"
+          ],
+          "default": "openai",
+          "description": "Provider for commit generation. Ollama runs downloaded models without an API key."
+        },
+        "commitAI.ollama.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:3b",
+          "minLength": 1,
+          "description": "Downloaded Ollama model name (ollama pull <model>)."
+        },
+        "commitAI.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "scope": "machine",
+          "description": "Ollama server URL. Diffs are sent to this server. With Remote SSH or containers, localhost refers to the extension host."
+        },
+        "commitAI.ollama.timeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "maximum": 600,
+          "description": "Ollama request timeout in seconds, including model loading."
         }
       }
     }
@@ -152,5 +180,10 @@
     "typescript": "^5.3.0",
     "esbuild": "^0.20.0",
     "@vscode/vsce": "^2.24.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielboggianosa/vscode-karma-message-ai.git"
+  },
+  "license": "MIT"
 }
