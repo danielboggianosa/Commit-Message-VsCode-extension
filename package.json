@@ -2,8 +2,9 @@
   "name": "commit-message-ai",
   "displayName": "Commit Message AI",
   "description": "Generate Karma-style commit messages automatically using OpenAI",
-  "version": "1.0.2",
-  "publisher": "daniel-boggiano",
+  "version": "1.0.3",
+  "publisher": "DanielBoggiano",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
