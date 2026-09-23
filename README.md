@@ -1,8 +1,8 @@
-# Commit Message AI
+# KarmaMessageAI
 
 Generate perfect Git commit messages automatically using OpenAI, following the **Karma / Conventional Commits** specification.
 
-\![Version](https://img.shields.io/badge/version-1.0.2-blue)
+\![Version](https://img.shields.io/badge/version-1.0.3-blue)
 \![VSCode](https://img.shields.io/badge/VSCode-^1.85.0-007ACC)
 \![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -81,7 +81,7 @@ chore(deps): update dependencies to latest versions
    npx vsce package --no-dependencies
    ```
 2. In VS Code: `Ctrl+Shift+P` → **Extensions: Install from VSIX...**
-3. Select the generated `commit-message-ai-1.0.0.vsix` file
+3. Select the generated `karma-message-ai-1.0.3.vsix` file
 4. Reload VS Code
 
 ### Option B — Development mode (for testing)

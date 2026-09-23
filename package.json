@@ -1,6 +1,6 @@
 {
-  "name": "commit-message-ai",
-  "displayName": "Commit Message AI",
+  "name": "karma-message-ai",
+  "displayName": "KarmaMessageAI",
   "description": "Generate Karma-style commit messages automatically using OpenAI",
   "version": "1.0.3",
   "publisher": "DanielBoggiano",
@@ -99,7 +99,7 @@
       ]
     },
     "configuration": {
-      "title": "Commit Message AI",
+      "title": "KarmaMessageAI",
       "properties": {
         "commitAI.model": {
           "type": "string",
