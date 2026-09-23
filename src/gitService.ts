@@ -33,60 +33,84 @@ export interface StagedDiffResult {
 
 export class GitService {
 
-  // ── Find all workspace folders that have staged changes ───────────────────
+  private async getRepositories(): Promise<GitRepository[]> {
+    const extension = vscode.extensions.getExtension<GitExtensionAPI>('vscode.git');
+    if (!extension) return [];
+    const git = extension.isActive ? extension.exports : await extension.activate();
+    return git.getAPI(1).repositories;
+  }
 
+  private async getStagedRepo(repoRoot: string): Promise<StagedRepo> {
+    const { stdout } = await execAsync('git diff --cached --name-only -z', {
+      cwd: repoRoot,
+      maxBuffer: 1024 * 1024,
+    });
+    return {
+      repoRoot,
+      label: path.basename(repoRoot),
+      stagedFiles: stdout.split('\0').filter(Boolean).length,
+    };
+  }
+
+  // Use Git's discovered repositories, including nested repos and submodules.
   async findReposWithStagedChanges(): Promise<StagedRepo[]> {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) return [];
+    const roots = new Set((await this.getRepositories()).map(r => r.rootUri.fsPath));
 
-    const results: StagedRepo[] = [];
-
-    for (const folder of folders) {
-      const fsPath = folder.uri.fsPath;
+    // Also support workspace folders that Git has not discovered yet, resolving
+    // subfolders to their actual repository root and avoiding duplicates.
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
       try {
-        const { stdout } = await execAsync(
-          'git diff --cached --name-only',
-          { cwd: fsPath, maxBuffer: 1024 * 64 }
-        );
-        const files = stdout.trim().split('\n').filter(Boolean);
-        if (files.length > 0) {
-          results.push({
-            repoRoot: fsPath,
-            label: path.basename(fsPath),
-            stagedFiles: files.length,
-          });
-        }
+        const { stdout } = await execAsync('git rev-parse --show-toplevel', {
+          cwd: folder.uri.fsPath,
+        });
+        roots.add(stdout.trim());
       } catch {
-        // Not a git repo or no git — skip silently
+        // A workspace folder may only be a container for repositories.
       }
     }
 
-    return results;
+    const repos = await Promise.all([...roots].map(async root => {
+      try {
+        return await this.getStagedRepo(root);
+      } catch {
+        return null;
+      }
+    }));
+    return repos.filter((repo): repo is StagedRepo => repo !== null && repo.stagedFiles > 0);
   }
 
-  // ── Resolve which repo to use (with QuickPick if multiple) ───────────────
+  async resolveActiveRepo(context?: { rootUri?: vscode.Uri }): Promise<StagedRepo | null> {
+    // SCM title actions pass the source control provider. Honor that target even
+    // when another repository is the only one with staged changes.
+    if (context?.rootUri) {
+      const repo = await this.getStagedRepo(context.rootUri.fsPath);
+      if (repo.stagedFiles > 0) return repo;
+      vscode.window.showWarningMessage(
+        `Commit AI: No staged changes found in "${repo.label}". Please run \`git add\` first.`
+      );
+      return null;
+    }
 
-  async resolveActiveRepo(): Promise<StagedRepo | null> {
     const repos = await this.findReposWithStagedChanges();
-
-    if (repos.length === 0) return null;
+    if (repos.length === 0) {
+      vscode.window.showWarningMessage(
+        'Commit AI: No staged changes found in any repository. Please run `git add` first.'
+      );
+      return null;
+    }
     if (repos.length === 1) return repos[0];
 
-    // Multiple repos with staged changes — ask the user
-    const items = repos.map((r) => ({
-      label: `$(repo) ${r.label}`,
-      description: `${r.stagedFiles} staged file${r.stagedFiles !== 1 ? 's' : ''}`,
-      detail: r.repoRoot,
-      repo: r,
-    }));
-
-    const picked = await vscode.window.showQuickPick(items, {
+    const picked = await vscode.window.showQuickPick(repos.map(repo => ({
+      label: `$(repo) ${repo.label}`,
+      description: `${repo.stagedFiles} staged file${repo.stagedFiles !== 1 ? 's' : ''}`,
+      detail: repo.repoRoot,
+      repo,
+    })), {
       title: 'Commit AI — Multiple repositories with staged changes',
       placeHolder: 'Select the repository to generate a commit message for',
       ignoreFocusOut: true,
     });
-
-    return picked ? picked.repo : null;
+    return picked?.repo ?? null;
   }
 
   // ── Staged diff for a specific repo root ─────────────────────────────────
@@ -129,18 +153,9 @@ export class GitService {
   // ── Write to SCM input box for a specific repo ────────────────────────────
 
   async setCommitMessage(message: string, repoRoot: string): Promise<boolean> {
-    const gitExt = vscode.extensions.getExtension<GitExtensionAPI>('vscode.git');
-    if (!gitExt) return false;
-
-    const git = gitExt.isActive ? gitExt.exports : await gitExt.activate();
-    const api = git.getAPI(1);
-    if (api.repositories.length === 0) return false;
-
-    // Match by exact path, then by startsWith (submodule edge case), then fallback
-    const repo =
-      api.repositories.find((r) => r.rootUri.fsPath === repoRoot) ??
-      api.repositories.find((r) => repoRoot.startsWith(r.rootUri.fsPath)) ??
-      api.repositories[0];
+    const repositories = await this.getRepositories();
+    const repo = repositories.find(r => r.rootUri.fsPath === repoRoot);
+    if (!repo) return false;
 
     repo.inputBox.value = message;
     return true;

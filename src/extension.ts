@@ -48,18 +48,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const generateCmd = vscode.commands.registerCommand(
     'commitAI.generateMessage',
-    async () => {
+    async (sourceControl?: { rootUri?: vscode.Uri }) => {
       // 1. Verify API key
       if (!(await ensureApiKey())) return;
 
-      // 2. Find which repo(s) have staged changes — handles multi-root workspaces
-      const activeRepo = await gitService.resolveActiveRepo();
-      if (!activeRepo) {
-        vscode.window.showWarningMessage(
-          'Commit AI: No staged changes found in any repository. Please run `git add` first.'
-        );
+      // 2. Honor the SCM repository, or let the user choose from staged repos.
+      let activeRepo;
+      try {
+        activeRepo = await gitService.resolveActiveRepo(sourceControl);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Commit AI: ${(err as Error).message}`);
         return;
       }
+      if (!activeRepo) return;
 
       // 3. Run with progress notification
       await vscode.window.withProgress(
@@ -105,7 +106,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 }
               },
               () => {
-                vscode.commands.executeCommand('commitAI.generateMessage');
+                vscode.commands.executeCommand('commitAI.generateMessage', {
+                  rootUri: vscode.Uri.file(result.repoRoot),
+                });
               }
             );
           } catch (err) {
@@ -196,16 +199,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const repoRoot = activeRepo?.repoRoot;
 
       if (!repoRoot) {
-        // No staged changes anywhere — just pick the first available repo
-        const allRepos = vscode.workspace.workspaceFolders;
-        const fallbackRoot = allRepos?.[0]?.uri.fsPath;
-        if (fallbackRoot) {
-          await gitService.setCommitMessage(item.fullMessage, fallbackRoot);
-          vscode.window.showInformationMessage('Commit AI: Message applied to Source Control ✓');
-        } else {
-          await vscode.env.clipboard.writeText(item.fullMessage);
-          vscode.window.showInformationMessage('Commit AI: Copied to clipboard (no Git repository found).');
-        }
         return;
       }
 

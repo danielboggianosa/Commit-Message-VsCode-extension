@@ -2,7 +2,7 @@
 
 Generate perfect Git commit messages automatically using OpenAI, following the **Karma / Conventional Commits** specification.
 
-\![Version](https://img.shields.io/badge/version-1.0.0-blue)
+\![Version](https://img.shields.io/badge/version-1.0.2-blue)
 \![VSCode](https://img.shields.io/badge/VSCode-^1.85.0-007ACC)
 \![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -197,4 +197,4 @@ npx vsce package --no-dependencies
 
 ## License
 
-MIT © CuevaTech
+MIT © Daniel Boggiano
