@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
 import * as http from 'http';
+import * as os from 'os';
+import { spawn } from 'child_process';
 
 // ─── Karma/Conventional Commits specification ────────────────────────────────
 const KARMA_TYPES = [
@@ -105,8 +107,12 @@ export class OpenAIService {
       ? `Generate a Karma-style commit message (with body if the changes are complex) for the following git diff:\n\n${diff}`
       : `Generate a single-line Karma-style commit message (no body) for the following git diff:\n\n${diff}`;
 
-    if (config.get<string>('provider', 'openai') === 'ollama') {
+    const provider = config.get<string>('provider', 'openai');
+    if (provider === 'ollama') {
       return this.callOllama(config, userPrompt, temperature);
+    }
+    if (provider === 'claude-code') {
+      return this.callClaudeCode(config, userPrompt);
     }
 
     const apiKey = await this.getApiKey();
@@ -123,6 +129,50 @@ export class OpenAIService {
     });
 
     return this.callOpenAI(apiKey, requestBody);
+  }
+
+  // Uses the local Claude Code CLI, so requests are billed to the user's Claude subscription.
+  private callClaudeCode(config: vscode.WorkspaceConfiguration, userPrompt: string): Promise<string> {
+    const command = config.get<string>('claudeCode.path', 'claude').trim() || 'claude';
+    const model = config.get<string>('claudeCode.model', 'haiku').trim();
+    const timeout = config.get<number>('claudeCode.timeout', 120) * 1000;
+    const args = ['-p', '--tools', '', '--no-session-persistence', '--system-prompt', SYSTEM_PROMPT];
+    if (model) args.push('--model', model);
+
+    // An API key in the environment would make the CLI bill the API instead of the subscription.
+    const env = { ...process.env };
+    delete env.ANTHROPIC_API_KEY;
+    delete env.ANTHROPIC_AUTH_TOKEN;
+
+    return new Promise((resolve, reject) => {
+      // Run from a temp dir so project CLAUDE.md files don't leak into the prompt.
+      const child = spawn(command, args, { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] });
+      let out = '';
+      let err = '';
+      let done = false;
+      const finish = (fn: () => void) => { if (!done) { done = true; clearTimeout(timer); fn(); } };
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(() => reject(new Error('Claude Code timed out. Increase commitAI.claudeCode.timeout.')));
+      }, timeout);
+      child.stdout.setEncoding('utf8').on('data', c => { out += c; });
+      child.stderr.setEncoding('utf8').on('data', c => { err += c; });
+      child.stdin.on('error', () => { /* surfaced through close/error */ });
+      child.on('error', e => finish(() => reject(new Error(
+        (e as NodeJS.ErrnoException).code === 'ENOENT'
+          ? `Claude Code CLI not found ("${command}"). Install it and set commitAI.claudeCode.path if needed.`
+          : `Claude Code: ${e.message}`))));
+      child.on('close', code => finish(() => {
+        const message = out.trim();
+        if (code !== 0 || !message) {
+          const detail = (err.trim() || message).slice(0, 300);
+          reject(new Error(`Claude Code failed${code ? ` (exit ${code})` : ''}: ${detail || 'empty response'}. Make sure you are logged in (run "claude" once).`));
+          return;
+        }
+        resolve(message);
+      }));
+      child.stdin.end(userPrompt);
+    });
   }
 
   private callOllama(config: vscode.WorkspaceConfiguration, userPrompt: string, temperature: number): Promise<string> {

@@ -141,10 +141,16 @@
           "type": "string",
           "enum": [
             "openai",
-            "ollama"
+            "ollama",
+            "claude-code"
+          ],
+          "enumDescriptions": [
+            "OpenAI API (requires an API key)",
+            "Local Ollama models (no API key)",
+            "Claude Code CLI, using your Claude subscription (no API key)"
           ],
           "default": "openai",
-          "description": "Provider for commit generation. Ollama runs downloaded models without an API key."
+          "description": "Provider for commit generation. Ollama and Claude Code need no API key."
         },
         "commitAI.ollama.model": {
           "type": "string",
@@ -157,6 +163,24 @@
           "default": "http://localhost:11434",
           "scope": "machine",
           "description": "Ollama server URL. Diffs are sent to this server. With Remote SSH or containers, localhost refers to the extension host."
+        },
+        "commitAI.claudeCode.path": {
+          "type": "string",
+          "default": "claude",
+          "scope": "machine",
+          "description": "Path or command of the Claude Code CLI. Set the absolute path if VS Code cannot find it (e.g. ~/.local/bin/claude)."
+        },
+        "commitAI.claudeCode.model": {
+          "type": "string",
+          "default": "haiku",
+          "description": "Model alias or name passed to Claude Code (haiku, sonnet, opus). Empty uses the CLI default."
+        },
+        "commitAI.claudeCode.timeout": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "maximum": 600,
+          "description": "Claude Code request timeout in seconds."
         },
         "commitAI.ollama.timeout": {
           "type": "number",
