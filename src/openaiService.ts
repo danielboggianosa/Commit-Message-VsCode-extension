@@ -76,6 +76,10 @@ interface OpenAIResponse {
   };
 }
 
+export class CancelledError extends Error {
+  constructor() { super('Generation cancelled.'); this.name = 'CancelledError'; }
+}
+
 export class OpenAIService {
   private readonly API_KEY_SECRET = 'commitAI.openaiApiKey';
 
@@ -97,7 +101,21 @@ export class OpenAIService {
 
   // ── Message generation ────────────────────────────────────────────────────
 
-  async generateCommitMessage(diff: string): Promise<string> {
+  async generateCommitMessage(diff: string, token?: vscode.CancellationToken): Promise<string> {
+    const controller = new AbortController();
+    const sub = token?.onCancellationRequested(() => controller.abort());
+    try {
+      if (token?.isCancellationRequested) throw new CancelledError();
+      return await this.generate(diff, controller.signal);
+    } catch (err) {
+      if (controller.signal.aborted) throw new CancelledError();
+      throw err;
+    } finally {
+      sub?.dispose();
+    }
+  }
+
+  private async generate(diff: string, signal: AbortSignal): Promise<string> {
     const config = vscode.workspace.getConfiguration('commitAI');
     const model = config.get<string>('model', 'gpt-4o-mini');
     const temperature = config.get<number>('temperature', 0.3);
@@ -109,10 +127,10 @@ export class OpenAIService {
 
     const provider = config.get<string>('provider', 'openai');
     if (provider === 'ollama') {
-      return this.callOllama(config, userPrompt, temperature);
+      return this.callOllama(config, userPrompt, temperature, signal);
     }
     if (provider === 'claude-code') {
-      return this.callClaudeCode(config, userPrompt);
+      return this.callClaudeCode(config, userPrompt, signal);
     }
 
     const apiKey = await this.getApiKey();
@@ -128,11 +146,11 @@ export class OpenAIService {
       temperature,
     });
 
-    return this.callOpenAI(apiKey, requestBody);
+    return this.callOpenAI(apiKey, requestBody, signal);
   }
 
   // Uses the local Claude Code CLI, so requests are billed to the user's Claude subscription.
-  private callClaudeCode(config: vscode.WorkspaceConfiguration, userPrompt: string): Promise<string> {
+  private callClaudeCode(config: vscode.WorkspaceConfiguration, userPrompt: string, signal: AbortSignal): Promise<string> {
     const command = config.get<string>('claudeCode.path', 'claude').trim() || 'claude';
     const model = config.get<string>('claudeCode.model', 'haiku').trim();
     const timeout = config.get<number>('claudeCode.timeout', 120) * 1000;
@@ -146,7 +164,7 @@ export class OpenAIService {
 
     return new Promise((resolve, reject) => {
       // Run from a temp dir so project CLAUDE.md files don't leak into the prompt.
-      const child = spawn(command, args, { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(command, args, { cwd: os.tmpdir(), env, signal, stdio: ['pipe', 'pipe', 'pipe'] });
       let out = '';
       let err = '';
       let done = false;
@@ -175,7 +193,7 @@ export class OpenAIService {
     });
   }
 
-  private callOllama(config: vscode.WorkspaceConfiguration, userPrompt: string, temperature: number): Promise<string> {
+  private callOllama(config: vscode.WorkspaceConfiguration, userPrompt: string, temperature: number, signal: AbortSignal): Promise<string> {
     const model = config.get<string>('ollama.model', 'qwen2.5-coder:3b').trim();
     if (!model) throw new Error('Set commitAI.ollama.model to a downloaded Ollama model.');
     let url: URL;
@@ -197,6 +215,7 @@ export class OpenAIService {
       const transport = url.protocol === 'https:' ? https : http;
       const req = transport.request(url, {
         method: 'POST',
+        signal,
         headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
       }, res => {
         let data = '';
@@ -236,12 +255,13 @@ export class OpenAIService {
 
   // ── Internal HTTP request ─────────────────────────────────────────────────
 
-  private callOpenAI(apiKey: string, body: string): Promise<string> {
+  private callOpenAI(apiKey: string, body: string, signal: AbortSignal): Promise<string> {
     return new Promise((resolve, reject) => {
       const options: https.RequestOptions = {
         hostname: 'api.openai.com',
         path: '/v1/chat/completions',
         method: 'POST',
+        signal,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,

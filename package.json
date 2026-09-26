@@ -32,6 +32,11 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "commitAI.generateAndApply",
+        "title": "Commit AI: Generate and Apply Commit Message (no preview)",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "commitAI.setApiKey",
         "title": "Commit AI: Set OpenAI API Key",
         "icon": "$(key)"
@@ -50,6 +55,14 @@
         "command": "commitAI.applyHistoryItem",
         "title": "Apply to Commit",
         "icon": "$(check)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "commitAI.generateMessage",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g",
+        "when": "scmProvider == git"
       }
     ],
     "menus": {
@@ -195,6 +208,7 @@
   "scripts": {
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
+    "test": "node --test tests/*.cjs",
     "package": "npm run compile -- --production && vsce package",
     "vscode:prepublish": "node esbuild.js --production"
   },

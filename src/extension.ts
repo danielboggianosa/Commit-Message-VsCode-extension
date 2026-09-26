@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { GitService } from './gitService';
-import { OpenAIService } from './openaiService';
+import { OpenAIService, CancelledError } from './openaiService';
 import { CommitPreviewPanel } from './commitPreviewPanel';
 import { HistoryProvider, HistoryItem } from './historyProvider';
 
@@ -61,9 +61,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ── Command: Generate message ────────────────────────────────────────────
 
-  const generateCmd = vscode.commands.registerCommand(
-    'commitAI.generateMessage',
-    async (sourceControl?: { rootUri?: vscode.Uri }) => {
+  async function generate(sourceControl: { rootUri?: vscode.Uri } | undefined, applyDirectly: boolean): Promise<void> {
+    {
       // 1. Verify API key
       if (!(await ensureApiKey())) return;
 
@@ -82,9 +81,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
           location: vscode.ProgressLocation.Notification,
           title: 'Commit AI',
-          cancellable: false,
+          cancellable: true,
         },
-        async (progress) => {
+        async (progress, token) => {
           try {
             progress.report({ message: `Reading diff from "${activeRepo.label}"…` });
             const result = await gitService.getStagedDiff(activeRepo.repoRoot);
@@ -98,14 +97,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
             const provider = vscode.workspace.getConfiguration('commitAI').get<string>('provider', 'openai');
             progress.report({ increment: 30, message: provider === 'ollama' ? 'Asking Ollama…' : provider === 'claude-code' ? 'Asking Claude Code…' : 'Asking OpenAI…' });
-            const generatedMessage = await openaiService.generateCommitMessage(result.diff);
+            const generatedMessage = await openaiService.generateCommitMessage(result.diff, token);
 
             progress.report({ increment: 60, message: 'Done!' });
 
-            // 4. Show editable preview
-            CommitPreviewPanel.show(
-              generatedMessage,
-              async (finalMessage) => {
+            const applyMessage = async (finalMessage: string) => {
                 // Apply to the correct repo's SCM input box
                 const applied = await gitService.setCommitMessage(finalMessage, result.repoRoot);
                 if (applied) {
@@ -120,7 +116,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     'Commit AI: Message copied to clipboard (could not find repository).'
                   );
                 }
-              },
+            };
+
+            if (applyDirectly) {
+              await applyMessage(generatedMessage);
+              return;
+            }
+
+            // 4. Show editable preview
+            CommitPreviewPanel.show(
+              generatedMessage,
+              applyMessage,
               () => {
                 vscode.commands.executeCommand('commitAI.generateMessage', {
                   rootUri: vscode.Uri.file(result.repoRoot),
@@ -128,12 +134,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               }
             );
           } catch (err) {
+            if (err instanceof CancelledError) return;
             const error = err as Error;
             vscode.window.showErrorMessage(`Commit AI: ${error.message}`);
           }
         }
       );
     }
+  }
+
+  const generateCmd = vscode.commands.registerCommand(
+    'commitAI.generateMessage',
+    (sourceControl?: { rootUri?: vscode.Uri }) => generate(sourceControl, false)
+  );
+
+  const generateApplyCmd = vscode.commands.registerCommand(
+    'commitAI.generateAndApply',
+    (sourceControl?: { rootUri?: vscode.Uri }) => generate(sourceControl, true)
   );
 
   // ── Command: Set API Key ─────────────────────────────────────────────────
@@ -235,6 +252,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     historyView,
     generateCmd,
+    generateApplyCmd,
     setApiKeyCmd,
     clearHistoryCmd,
     copyItemCmd,

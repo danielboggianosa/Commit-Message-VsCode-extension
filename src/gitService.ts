@@ -31,6 +31,42 @@ export interface StagedDiffResult {
   repoRoot: string;
 }
 
+// Paths that rarely help describe a change and can swamp the diff budget.
+const NOISE_PATHSPECS = [
+  '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/bun.lockb',
+  '**/Cargo.lock', '**/composer.lock', '**/poetry.lock', '**/Gemfile.lock', '**/go.sum',
+  '**/*.min.js', '**/*.min.css', '**/*.map',
+  'dist/**', 'build/**', 'out/**', '**/node_modules/**',
+];
+
+const TRUNCATION_NOTE = '[... diff truncated ...]';
+
+/**
+ * Builds the prompt payload within `maxLength`. The stat summary always comes first,
+ * and the remaining budget is shared fairly between files (small files stay whole,
+ * large ones are cut) so one big file cannot hide the rest of the change.
+ */
+export function buildDiffPayload(stat: string, diff: string, maxLength: number): string {
+  const header = `=== CHANGED FILES ===\n${stat}\n=== DIFF ===\n`;
+  if (header.length + diff.length <= maxLength) return header + diff;
+
+  const files = diff.split(/^(?=diff --git )/m).filter(Boolean);
+  const budget = Math.max(maxLength - header.length, 0);
+  const order = files.map((text, i) => ({ text, i })).sort((x, y) => x.text.length - y.text.length);
+  const parts: string[] = new Array(files.length);
+  let remaining = budget;
+  order.forEach(({ text, i }, n) => {
+    const share = Math.floor(remaining / (order.length - n));
+    const note = `\n${TRUNCATION_NOTE}\n`;
+    const piece = text.length <= share
+      ? text
+      : share > note.length ? text.substring(0, share - note.length) + note : '';
+    parts[i] = piece;
+    remaining -= piece.length;
+  });
+  return (header + parts.join('')).substring(0, Math.max(maxLength, header.length));
+}
+
 export class GitService {
 
   private async getRepositories(): Promise<GitRepository[]> {
@@ -117,30 +153,32 @@ export class GitService {
 
   async getStagedDiff(repoRoot: string): Promise<StagedDiffResult | null> {
     try {
-      const { stdout: stat } = await execAsync(
-        'git diff --cached --stat',
+      const excludes = NOISE_PATHSPECS.map(p => `':(exclude,glob)${p}'`).join(' ');
+      const pathspec = `-- . ${excludes}`;
+
+      // Lockfiles, build output and minified files add noise, so they are left out.
+      // If every staged file is noise, fall back to the full diff.
+      let { stdout: stat } = await execAsync(
+        `git diff --cached --stat ${pathspec}`,
         { cwd: repoRoot, maxBuffer: 1024 * 512 }
       );
-
+      let filter = pathspec;
+      if (!stat.trim()) {
+        filter = '';
+        ({ stdout: stat } = await execAsync('git diff --cached --stat', { cwd: repoRoot, maxBuffer: 1024 * 512 }));
+      }
       if (!stat.trim()) return null;
 
       const { stdout: diff } = await execAsync(
-        'git diff --cached --unified=3',
+        `git diff --cached --unified=3 ${filter}`,
         { cwd: repoRoot, maxBuffer: 1024 * 1024 * 10 }
       );
-
       if (!diff.trim()) return null;
 
       const config = vscode.workspace.getConfiguration('commitAI');
       const maxLength = config.get<number>('maxDiffLength', 4000);
 
-      const combined = `=== CHANGED FILES ===\n${stat}\n=== DIFF ===\n${diff}`;
-      return {
-        diff: combined.length > maxLength
-          ? combined.substring(0, maxLength) + '\n\n[... diff truncated for brevity ...]'
-          : combined,
-        repoRoot,
-      };
+      return { diff: buildDiffPayload(stat, diff, maxLength), repoRoot };
     } catch (err) {
       const error = err as Error;
       if (error.message?.includes('not a git repository')) {

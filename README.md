@@ -11,6 +11,8 @@ Generate perfect Git commit messages using OpenAI, local models through Ollama, 
 ## Features
 
 - **✨ One-click generation** — button in the Source Control panel header
+- **Cancellable** — stop a slow generation from the progress notification
+- **Smart diff** — skips lockfiles, `dist/` and minified files, and shares the size budget fairly between files
 - **Editable preview** — review and modify the message before applying (`Ctrl+Enter` to confirm)
 - **Karma convention** — enforces `feat`, `fix`, `docs`, `refactor`, and all standard types
 - **Message history** — side panel with the last 50 generated messages (click to re-apply)
@@ -171,7 +173,9 @@ The message appears in an editable panel — review it, make any tweaks, then cl
 
 | Action | How |
 |--------|-----|
-| Generate message | Click **✨** in Source Control header |
+| Generate message | Click **✨** in Source Control header, or `Ctrl+Alt+G` (`Cmd+Alt+G` on macOS) |
+| Generate without preview | `Ctrl+Shift+P` → `Commit AI: Generate and Apply Commit Message (no preview)` |
+| Cancel generation | Click **Cancel** on the progress notification |
 | Apply message | Click **Apply to Commit** or `Ctrl+Enter` |
 | Regenerate | Click **↺ Regenerate** in the preview panel |
 | Cancel | Click **✕ Cancel** or press `Esc` |
@@ -230,6 +234,9 @@ node esbuild.js --production
 
 # Watch mode
 node esbuild.js --watch
+
+# Run tests
+npm test
 
 # Type-check only
 npx tsc --noEmit
