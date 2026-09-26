@@ -1,8 +1,8 @@
 # KarmaMessageAI
 
-Generate perfect Git commit messages using OpenAI or local models through Ollama, following the **Karma / Conventional Commits** specification.
+Generate perfect Git commit messages using OpenAI, local models through Ollama, or your **Claude Code subscription**, following the **Karma / Conventional Commits** specification.
 
-\![Version](https://img.shields.io/badge/version-1.0.3-blue)
+\![Version](https://img.shields.io/badge/version-1.1.0-blue)
 \![VSCode](https://img.shields.io/badge/VSCode-^1.85.0-007ACC)
 \![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -14,6 +14,7 @@ Generate perfect Git commit messages using OpenAI or local models through Ollama
 - **Editable preview** — review and modify the message before applying (`Ctrl+Enter` to confirm)
 - **Karma convention** — enforces `feat`, `fix`, `docs`, `refactor`, and all standard types
 - **Message history** — side panel with the last 50 generated messages (click to re-apply)
+- **Claude subscription support** — use the Claude Code CLI with your existing login, no API key
 - **Secure API key storage** — stored in VS Code's encrypted `SecretStorage` (OS Keychain)
 - **Configurable model** — choose between `gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`, and `gpt-3.5-turbo`
 
@@ -66,7 +67,7 @@ chore(deps): update dependencies to latest versions
 
 - **VS Code** `^1.85.0`
 - **Git** installed and available in your PATH
-- Either an **OpenAI API Key** or **Ollama** with a downloaded local model.
+- One of: an **OpenAI API Key**, **Ollama** with a downloaded local model, or the **Claude Code CLI** logged in with your Claude subscription.
 
 ---
 
@@ -81,7 +82,7 @@ chore(deps): update dependencies to latest versions
    npx vsce package --no-dependencies
    ```
 2. In VS Code: `Ctrl+Shift+P` → **Extensions: Install from VSIX...**
-3. Select the generated `karma-message-ai-1.0.3.vsix` file
+3. Select the generated `karma-message-ai-1.1.0.vsix` file
 4. Reload VS Code
 
 ### Option B — Development mode (for testing)
@@ -120,6 +121,23 @@ extension host. The server must be reachable from there.
 
 See [Ollama authentication](https://docs.ollama.com/api/authentication): local API
 requests need no key; cloud models are a separate service and may require sign-in.
+
+#### Claude Code setup (use your Claude subscription)
+
+1. Install the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) and log in once by running `claude` in a terminal.
+2. Add to VS Code settings:
+
+   ```json
+   "commitAI.provider": "claude-code",
+   "commitAI.claudeCode.model": "haiku"
+   ```
+
+The extension runs `claude -p` with no tools and no saved session, from a temporary
+directory so project `CLAUDE.md` files are not included. Usage counts against your
+Claude subscription. `ANTHROPIC_API_KEY` is removed from the CLI's environment so
+requests are not billed to the API. If VS Code cannot find the CLI (it may not inherit
+your shell `PATH`), set `commitAI.claudeCode.path` to the absolute path, e.g.
+`/Users/you/.local/bin/claude`.
 
 #### OpenAI setup
 
@@ -171,12 +189,15 @@ Configure via `File → Preferences → Settings` and search for **Commit AI**:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `commitAI.provider` | `openai` | `openai` or `ollama` |
+| `commitAI.provider` | `openai` | `openai`, `ollama` or `claude-code` |
+| `commitAI.claudeCode.model` | `haiku` | Claude model alias (`haiku`, `sonnet`, `opus`) |
+| `commitAI.claudeCode.path` | `claude` | Path or command of the Claude Code CLI |
+| `commitAI.claudeCode.timeout` | `120` | Timeout in seconds |
 | `commitAI.ollama.model` | `qwen2.5-coder:3b` | Downloaded local model |
 | `commitAI.ollama.baseUrl` | `http://localhost:11434` | Ollama server URL |
 | `commitAI.ollama.timeout` | `120` | Timeout in seconds |
 | `commitAI.model` | `gpt-4o-mini` | OpenAI model to use |
-| `commitAI.maxDiffLength` | `4000` | Max characters of diff sent to OpenAI |
+| `commitAI.maxDiffLength` | `4000` | Max characters of diff sent to the provider |
 | `commitAI.includeBody` | `true` | Include body for complex changes |
 | `commitAI.temperature` | `0.3` | Creativity level (0 = deterministic, 1 = creative) |
 
@@ -188,7 +209,7 @@ Configure via `File → Preferences → Settings` and search for **Commit AI**:
 src/
 ├── extension.ts          # Entry point — registers commands and views
 ├── gitService.ts         # Reads staged diff, writes to SCM input box
-├── openaiService.ts      # Calls OpenAI API, manages API key
+├── openaiService.ts      # Calls OpenAI, Ollama or Claude Code; manages API key
 ├── commitPreviewPanel.ts # Webview panel for editing the generated message
 └── historyProvider.ts    # TreeView provider for the history sidebar
 ```
@@ -222,6 +243,7 @@ npx vsce package --no-dependencies
 ## Privacy
 
 - With OpenAI selected, your git diff is sent to OpenAI's API.
+- With Claude Code selected, your diff is sent to Anthropic through the Claude Code CLI under your subscription; see Anthropic's privacy policy.
 - With Ollama selected, your diff is sent only to the configured Ollama server. A local server with a local model keeps generation on that machine; remote servers or cloud models have different privacy implications.
 - The API key is stored locally in VS Code's `SecretStorage` (OS Keychain).
 - No data is stored or sent anywhere else.
