@@ -2,7 +2,7 @@
   "name": "karma-message-ai",
   "displayName": "KarmaMessageAI",
   "description": "Generate Karma-style commit messages using OpenAI or local Ollama models, without an API key",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "DanielBoggiano",
   "icon": "images/icon.png",
   "engines": {
